@@ -171,6 +171,15 @@ impl CuckooFilter {
         self.exceptional_items.insert(prev_i, i, fingerprint);
     }
 }
+impl PartialEq for CuckooFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.buckets == other.buckets
+            && self.max_kicks == other.max_kicks
+            && self.exceptional_items == other.exceptional_items
+            && self.item_count == other.item_count
+    }
+}
+impl Eq for CuckooFilter {}
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -231,3 +240,9 @@ impl ExceptionalItems {
         false
     }
 }
+impl PartialEq for ExceptionalItems {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+impl Eq for ExceptionalItems {}

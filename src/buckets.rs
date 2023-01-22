@@ -153,6 +153,16 @@ impl Buckets {
         self.bits.get_uint(offset, self.fingerprint_bitwidth)
     }
 }
+impl PartialEq for Buckets {
+    fn eq(&self, other: &Self) -> bool {
+        self.fingerprint_bitwidth == other.fingerprint_bitwidth
+            && self.entries_per_bucket == other.entries_per_bucket
+            && self.bucket_bitwidth == other.bucket_bitwidth
+            && self.bucket_index_bitwidth == other.bucket_index_bitwidth
+            && self.bits == other.bits
+    }
+}
+impl Eq for Buckets {}
 
 #[derive(Debug)]
 pub struct Iter<'a> {

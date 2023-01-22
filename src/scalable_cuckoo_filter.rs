@@ -1,4 +1,4 @@
-use rand::{rngs::ThreadRng, Rng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use siphasher::sip::SipHasher13;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -9,7 +9,7 @@ use crate::cuckoo_filter::CuckooFilter;
 pub type DefaultHasher = SipHasher13;
 
 /// Default random number generator.
-pub type DefaultRng = ThreadRng;
+pub type DefaultRng = StdRng;
 
 /// Builder for `ScalableCuckooFilter`.
 #[derive(Debug)]
@@ -21,7 +21,7 @@ pub struct ScalableCuckooFilterBuilder<H = DefaultHasher, R = DefaultRng> {
     hasher: H,
     rng: R,
 }
-impl ScalableCuckooFilterBuilder<DefaultHasher, DefaultRng> {
+impl ScalableCuckooFilterBuilder<DefaultHasher> {
     /// Makes a new `ScalableCuckooFilterBuilder` instance.
     pub fn new() -> Self {
         ScalableCuckooFilterBuilder {
@@ -30,11 +30,11 @@ impl ScalableCuckooFilterBuilder<DefaultHasher, DefaultRng> {
             entries_per_bucket: 4,
             max_kicks: 512,
             hasher: SipHasher13::new(),
-            rng: rand::thread_rng(),
+            rng: SeedableRng::from_entropy(),
         }
     }
 }
-impl<H: Hasher + Clone, R: Rng> ScalableCuckooFilterBuilder<H, R> {
+impl<H: Hasher + Clone> ScalableCuckooFilterBuilder<H> {
     /// Sets the initial capacity (i.e., the number of estimated maximum items) of this filter.
     ///
     /// The default value is `100_000`.
@@ -81,7 +81,7 @@ impl<H: Hasher + Clone, R: Rng> ScalableCuckooFilterBuilder<H, R> {
     /// Sets the hasher of this filter.
     ///
     /// The default value if `DefaultHasher::new()`.
-    pub fn hasher<T: Hasher + Clone>(self, hasher: T) -> ScalableCuckooFilterBuilder<T, R> {
+    pub fn hasher<T: Hasher + Clone>(self, hasher: T) -> ScalableCuckooFilterBuilder<T> {
         ScalableCuckooFilterBuilder {
             initial_capacity: self.initial_capacity,
             false_positive_probability: self.false_positive_probability,
@@ -107,7 +107,7 @@ impl<H: Hasher + Clone, R: Rng> ScalableCuckooFilterBuilder<H, R> {
     }
 
     /// Builds a `ScalableCuckooFilter` instance.
-    pub fn finish<T: Hash + ?Sized>(self) -> ScalableCuckooFilter<T, H, R> {
+    pub fn finish<T: Hash + ?Sized>(self) -> ScalableCuckooFilter<T, H> {
         let mut filter = ScalableCuckooFilter {
             hasher: self.hasher,
             rng: self.rng,
@@ -131,10 +131,15 @@ impl Default for ScalableCuckooFilterBuilder {
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "serde_support")]
+fn default_rng() -> StdRng {
+    SeedableRng::from_entropy()
+}
+
 /// Scalable Cuckoo Filter.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
-pub struct ScalableCuckooFilter<T: ?Sized, H = DefaultHasher, R = DefaultRng> {
+pub struct ScalableCuckooFilter<T: ?Sized, H = DefaultHasher> {
     #[cfg_attr(feature = "serde_support", serde(skip))]
     hasher: H,
     filters: Vec<CuckooFilter>,
@@ -142,8 +147,8 @@ pub struct ScalableCuckooFilter<T: ?Sized, H = DefaultHasher, R = DefaultRng> {
     false_positive_probability: f64,
     entries_per_bucket: usize,
     max_kicks: usize,
-    #[cfg_attr(feature = "serde_support", serde(skip))]
-    rng: R,
+    #[cfg_attr(feature = "serde_support", serde(skip, default = "default_rng"))]
+    rng: StdRng,
     _item: PhantomData<T>,
 }
 impl<T: Hash + ?Sized> ScalableCuckooFilter<T> {
@@ -169,7 +174,7 @@ impl<T: Hash + ?Sized> ScalableCuckooFilter<T> {
             .finish()
     }
 }
-impl<T: Hash + ?Sized, H: Hasher + Clone, R: Rng> ScalableCuckooFilter<T, H, R> {
+impl<T: Hash + ?Sized, H: Hasher + Clone> ScalableCuckooFilter<T, H> {
     /// Returns the approximate number of items inserted in this filter.
     pub fn len(&self) -> usize {
         self.filters.iter().map(|f| f.len()).sum()
@@ -249,6 +254,30 @@ impl<T: Hash + ?Sized, H: Hasher + Clone, R: Rng> ScalableCuckooFilter<T, H, R> 
         self.filters.push(filter);
     }
 }
+impl<T: Hash + ?Sized, H: Hasher + Clone> Clone for ScalableCuckooFilter<T, H> {
+    fn clone(&self) -> Self {
+        ScalableCuckooFilter {
+            hasher: self.hasher.clone(),
+            filters: self.filters.clone(),
+            initial_capacity: self.initial_capacity,
+            false_positive_probability: self.false_positive_probability,
+            entries_per_bucket: self.entries_per_bucket,
+            max_kicks: self.max_kicks,
+            rng: self.rng.clone(),
+            _item: self._item,
+        }
+    }
+}
+impl<T: Hash + ?Sized, H: Hasher + Clone> PartialEq for ScalableCuckooFilter<T, H> {
+    fn eq(&self, other: &Self) -> bool {
+        self.filters.eq(&other.filters)
+            && self.initial_capacity == other.initial_capacity
+            && self.false_positive_probability == other.false_positive_probability
+            && self.entries_per_bucket == other.entries_per_bucket
+            && self.max_kicks == other.max_kicks
+    }
+}
+impl<T: Hash + ?Sized, H: Hasher + Clone> Eq for ScalableCuckooFilter<T, H> {}
 
 #[cfg(test)]
 mod test {

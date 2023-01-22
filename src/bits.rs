@@ -47,6 +47,12 @@ impl Bits {
         }
     }
 }
+impl PartialEq for Bits {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+impl Eq for Bits {}
 
 #[cfg(test)]
 mod test {
